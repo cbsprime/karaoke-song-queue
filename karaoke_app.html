@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MelodyMix Karaoke</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 0;
+            background: linear-gradient(135deg, #ff4081, #81d4fa);
+            color: #333;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+        }
+        .container {
+            max-width: 600px;
+            width: 100%;
+            margin: 20px;
+            padding: 30px;
+            background-color: #fff;
+            border-radius: 15px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+            animation: fadeIn 1s ease-in-out;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        h1 {
+            text-align: center;
+            color: #007bff;
+            font-size: 2.5em;
+            margin-bottom: 20px;
+        }
+        input, select, button {
+            width: calc(100% - 40px);
+            margin: 10px 20px;
+            padding: 15px;
+            font-size: 1em;
+            border: 1px solid #ccc;
+            border-radius: 10px;
+            transition: all 0.3s ease;
+        }
+        input:focus, select:focus, button:focus {
+            outline: none;
+            border-color: #007bff;
+        }
+        button {
+            background-color: #007bff;
+            color: #fff;
+            border: none;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        .queue-item {
+            padding: 15px;
+            border: 1px solid #ccc;
+            border-radius: 10px;
+            margin: 10px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background-color: #f9f9f9;
+        }
+        .queue-item button {
+            background-color: #dc3545;
+            margin-left: 10px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            padding: 5px 10px;
+        }
+        .queue-item button:hover {
+            background-color: #c82333;
+        }
+        .suggestion-item {
+            padding: 10px 20px;
+            border-bottom: 1px solid #ccc;
+            cursor: pointer;
+            transition: background-color 0.3s ease;
+        }
+        .suggestion-item:hover {
+            background-color: #e0e0e0;
+        }
+        .suggestion-item:last-child {
+            border-bottom: none;
+        }
+        #nextSinger, #currentSinger {
+            text-align: center;
+            margin: 20px 0;
+            font-size: 1.2em;
+            font-weight: bold;
+            color: #007bff;
+        }
+        .suggestions-header {
+            text-align: center;
+            font-size: 1.5em;
+            margin: 20px 0;
+            color: #ff4081;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Karaoke Song Queue</h1>
+        <input type="text" id="nameInput" placeholder="Your Name">
+        <div class="suggestions-header">Recommended Top 5 Songs</div>
+        <div id="suggestions"></div>
+        <select id="songSelect">
+            <option value="">Select Song</option>
+            <optgroup label="Pop">
+                <option value="Shape of You" data-duration="3:53">Shape of You</option>
+                <option value="Havana" data-duration="3:37">Havana</option>
+                <option value="Uptown Funk" data-duration="4:31">Uptown Funk</option>
+            </optgroup>
+            <optgroup label="Rock">
+                <option value="Sweet Child O' Mine" data-duration="5:56">Sweet Child O' Mine</option>
+                <option value="Bohemian Rhapsody" data-duration="5:55">Bohemian Rhapsody</option>
+                <option value="Stairway to Heaven" data-duration="8:02">Stairway to Heaven</option>
+            </optgroup>
+            <optgroup label="Hip Hop">
+                <option value="Lose Yourself" data-duration="5:26">Lose Yourself</option>
+                <option value="Sicko Mode" data-duration="5:12">Sicko Mode</option>
+                <option value="Old Town Road" data-duration="1:53">Old Town Road</option>
+            </optgroup>
+        </select>
+        <button id="addToQueueBtn">Add to Queue</button>
+        <div id="queue"></div>
+        <div id="currentSinger">No singer in queue</div>
+        <div id="nextSinger"></div>
+    </div>
+
+    <script>
+        const ws = new WebSocket('ws://localhost:8080');
+
+        ws.onmessage = (event) => {
+            const data = JSON.parse(event.data);
+            if (data.type === 'INITIAL_QUEUE' || data.type === 'UPDATE_QUEUE') {
+                queue = data.payload;
+                updateQueueDisplay();
+            }
+        };
+
+        var queue = [];
+        var currentSongIndex = 0;
+        var currentCountdown;
+
+        var suggestions = [
+            "Don't Stop Believin' - Journey - 4:11",
+            "Billie Jean - Michael Jackson - 4:54",
+            "Bohemian Rhapsody - Queen - 5:55",
+            "Wonderwall - Oasis - 4:18",
+            "Hotel California - Eagles - 6:30"
+        ];
+
+        var suggestionsContainer = document.getElementById('suggestions');
+        suggestions.forEach(function(song) {
+            var suggestionItem = document.createElement('div');
+            suggestionItem.classList.add('suggestion-item');
+            suggestionItem.textContent = song;
+            suggestionItem.addEventListener('click', function() {
+                var nameInput = document.getElementById('nameInput');
+                var userName = nameInput.value.trim();
+                if (userName === '') {
+                    alert('Please enter your name');
+                    return;
+                }
+                var songDetails = song.split(' - ');
+                var selectedSong = songDetails[1];
+                var duration = songDetails[2];
+                addToQueue(userName, selectedSong, duration);
+            });
+            suggestionsContainer.appendChild(suggestionItem);
+        });
+
+        document.getElementById('addToQueueBtn').addEventListener('click', function() {
+            var nameInput = document.getElementById('nameInput');
+            var userName = nameInput.value.trim();
+            if (userName === '') {
+                alert('Please enter your name');
+                return;
+            }
+
+            var songSelect = document.getElementById('songSelect');
+            var selectedSong = songSelect.value.trim();
+            if (selectedSong === '') {
+                alert('Please select a song');
+                return;
+            }
+            var selectedDuration = songSelect.options[songSelect.selectedIndex].getAttribute('data-duration');
+            addToQueue(userName, selectedSong, selectedDuration);
+        });
+
+        function addToQueue(name, song, duration) {
+            const newEntry = { name: name, song: song, duration: duration };
+            if (queue.length > 0) {
+                queue.push(newEntry);
+            } else {
+                queue.push(newEntry);
+            }
+            ws.send(JSON.stringify({ type: 'ADD_TO_QUEUE', payload: newEntry }));
+            updateQueueDisplay();
+        }
+
+        function removeFromQueue(index) {
+            queue.splice(index, 1);
+            ws.send(JSON.stringify({ type: 'REMOVE_FROM_QUEUE', payload: { index: index } }));
+            updateQueueDisplay();
+        }
+
+        function updateQueueDisplay() {
+            var queueDisplay = document.getElementById('queue');
+            queueDisplay.innerHTML = '';
+            queue.forEach(function(item, index) {
+                var queueItem = document.createElement('div');
+                queueItem.classList.add('queue-item');
+                queueItem.innerHTML = `<span>${item.name} - ${item.song} (${item.duration})</span>
+                                       <button onclick="removeFromQueue(${index})">Remove</button>`;
+                queueDisplay.appendChild(queueItem);
+            });
+            updateNextSinger();
+        }
+
+        function updateNextSinger() {
+            var currentSinger = document.getElementById('currentSinger');
+            var nextSinger = document.getElementById('nextSinger');
+            if (queue.length > 0) {
+                currentSinger.innerHTML = `Current singer: ${queue[0].name} - ${queue[0].song}`;
+                if (queue.length > 1) {
+                    nextSinger.innerHTML = `Next singer: ${queue[1].name} - ${queue[1].song}`;
+                } else {
+                    nextSinger.innerHTML = 'Next singer: None';
+                }
+                startCountdown(queue[0].duration);
+            } else {
+                currentSinger.innerHTML = 'No singer in queue';
+                nextSinger.innerHTML = '';
+                clearInterval(currentCountdown);
+            }
+        }
+
+        function startCountdown(duration) {
+            clearInterval(currentCountdown);
+            var [minutes, seconds] = duration.split(':').map(Number);
+            var totalSeconds = minutes * 60 + seconds;
+            currentCountdown = setInterval(() => {
+                if (totalSeconds > 0) {
+                    totalSeconds--;
+                    var mins = Math.floor(totalSeconds / 60);
+                    var secs = totalSeconds % 60;
+                    document.getElementById('currentSinger').innerHTML = `Current singer: ${queue[0].name} - ${queue[0].song} (Time left: ${mins}:${secs < 10 ? '0' + secs : secs})`;
+                } else {
+                    clearInterval(currentCountdown);
+                    removeFromQueue(0); // Remove the current singer from the queue
+                    updateQueueDisplay(); // Update the display to show the next singer
+                }
+            }, 1000);
+        }
+    </script>
+</body>
+</html>
